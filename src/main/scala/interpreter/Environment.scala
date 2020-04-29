@@ -1,36 +1,33 @@
 package interpreter
 
-class Environment(env: Map[String, Expression], outer: Option[Environment]) {
+import scala.collection.mutable
 
-  /**
-   * Find the expression associated with given name
-   *
-   * @param name name to find
-   * @return found expression or error
-   */
+case class Environment(outer: Option[Environment], presets: Map[String, Expression])
+    extends mutable.HashMap[String, Expression] {
+  
+  def this(outer: Option[Environment]) = this(outer, Map())
+  def this(outer: Option[Environment], vars: List[String], values: Seq[Expression]) =
+    this(outer, Map() ++ vars.zip(values))
+
+  this ++= presets
+
   def find(name: String): Expression = {
-    if (env.contains(name)) env(name)
+    if (contains(name)) apply(name)
     else
       outer match {
-        case None    => throw new IllegalArgumentException(s"Undefined symbol '$name'")
+        case None    => throw new IllegalArgumentException(s"undefined symbol '$name'")
         case Some(e) => e.find(name)
       }
   }
 
-  /**
-   * Set expression for given name, change if was before
-   *
-   * @param name name to set expression for
-   * @param value expression for given name
-   * @return updated environment
-   */
-  def set(name: String, value: Expression): Environment = {
-    Environment(env + (name -> value), outer)
+  def define(name: String, value: Expression): Expression = {
+    this += (name -> value)
+    value
   }
-}
 
-object Environment {
-  def apply(env: Map[String, Expression], outer: Option[Environment] = None): Environment = {
-    new Environment(env, outer)
+  def set(name: String, value: Expression): Expression = {
+    val previous: Expression = find(name)
+    this += (name -> value)
+    previous
   }
 }
