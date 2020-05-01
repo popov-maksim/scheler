@@ -1,4 +1,6 @@
 .idea/
 .scalafmt.conf
 target/
-project/
+project/project
+project/target
+project/plugins.sbt
