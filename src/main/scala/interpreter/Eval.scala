@@ -14,7 +14,7 @@ object Eval {
   }
 
   def arithmeticOperation(op: String, args: ListExpr, env: Environment): Expression = {
-    def applyOperation(init: Number)(op: (Number, Number) => Number): Number = {
+    def applyOperation(init: Number)(args: ListExpr, op: (Number, Number) => Number): Number = {
       @scala.annotation.tailrec
       def reduce(l: List[Expression], acc: Number): Number = l match {
         case List() => acc
@@ -28,7 +28,7 @@ object Eval {
     }
 
     op match {
-      case "+" => applyOperation(Number(0))(_ + _)
+      case "+" => applyOperation(Number(0))(args, _ + _)
       case "-" =>
         if (args.cdr == ListExpr(List()))
           args.car match {
@@ -37,12 +37,22 @@ object Eval {
           }
         else
           args.car match {
-            case n: Number => applyOperation(n)((a, b) => a - b)
+            case n: Number => applyOperation(n)(args.cdr, (a, b) => a - b)
             case _         => throw new IllegalArgumentException("arithmetic operation is applied not to number")
           }
-      case "*" => applyOperation(Number(1))(_ * _)
-      case "/" => applyOperation(Number(1))((a, b) => a / b)
-      case _   => throw new IllegalArgumentException("Unknown arithmetic operator")
+      case "*" => applyOperation(Number(1))(args, _ * _)
+      case "/" =>
+        if (args.cdr == ListExpr(List()))
+          args.car match {
+            case n: Number => n
+            case _         => throw new IllegalArgumentException("arithmetic operation is applied not to number")
+          }
+        else
+          args.car match {
+            case n: Number => applyOperation(n)(args.cdr, (a, b) => a / b)
+            case _         => throw new IllegalArgumentException("arithmetic operation is applied not to number")
+          }
+      case _ => throw new IllegalArgumentException("Unknown arithmetic operator")
     }
   }
 
@@ -51,16 +61,16 @@ object Eval {
       case "<" =>
         eval(operand1, env) match {
           case a: Number =>
-            eval(operand1, env) match {
+            eval(operand2, env) match {
               case b: Number => a < b
               case _         => throw new IllegalArgumentException("second argument must be Number")
             }
           case _ => throw new IllegalArgumentException("first argument must be Number")
         }
       case ">" =>
-        eval(operand2, env) match {
+        eval(operand1, env) match {
           case a: Number =>
-            eval(operand1, env) match {
+            eval(operand2, env) match {
               case b: Number => a > b
               case _         => throw new IllegalArgumentException("second argument must be Number")
             }
@@ -69,7 +79,7 @@ object Eval {
       case "==" =>
         eval(operand1, env) match {
           case a: Number =>
-            eval(operand1, env) match {
+            eval(operand2, env) match {
               case b: Number => a == b
               case _         => throw new IllegalArgumentException("second argument must be Number")
             }
@@ -78,7 +88,7 @@ object Eval {
       case "<=" =>
         eval(operand1, env) match {
           case a: Number =>
-            eval(operand1, env) match {
+            eval(operand2, env) match {
               case b: Number => a <= b
               case _         => throw new IllegalArgumentException("second argument must be Number")
             }
@@ -87,13 +97,26 @@ object Eval {
       case ">=" =>
         eval(operand1, env) match {
           case a: Number =>
-            eval(operand1, env) match {
+            eval(operand2, env) match {
               case b: Number => a >= b
               case _         => throw new IllegalArgumentException("second argument must be Number")
             }
           case _ => throw new IllegalArgumentException("first argument must be Number")
         }
     }
+
+  def execProcedure(proc: Procedure, bindings: ListExpr, env: Environment): Expression = {
+    val args = proc.args
+    val body = proc.v
+
+    def pair(e1: List[String], e2: ListExpr): Map[String, Expression] = {
+      val l2 = e2.v
+      e1.zip(l2).map(x => (x._1, eval(x._2, env))).toMap
+    }
+
+    val innerEnv: Map[String, Expression] = pair(args, bindings)
+    eval(body, Environment(Some(env), innerEnv))
+  }
 
   def eval(expr: Expression, env: Environment): Expression = expr match {
     case _: Number        => expr
@@ -135,18 +158,15 @@ object Eval {
           comparisonOperation(x, e.cdr.car, e.cdr.cdr.car, env)
         case Symbol(x) if numberOperations("arithmetic").contains(x) =>
           arithmeticOperation(x, e.cdr, env)
-        case Symbol(_) =>
+        case _ =>
           eval(e.car, env) match {
-            case Procedure(args, body, env) =>
-              def pair(e1: List[String], e2: ListExpr): Map[String, Expression] = {
-                val l2 = e2.v
-                e1.zip(l2).map(x => (x._1, eval(x._2, env))).toMap
-              }
-              val innerEnv: Map[String, Expression] = pair(args, e.cdr)
-              eval(body, Environment(Some(env), innerEnv))
+            case proc: Procedure => execProcedure(proc, e.cdr, env)
+            case l: ListExpr => eval(l, env) match {
+              case proc: Procedure => execProcedure(proc, e.cdr, env)
+              case _ => throw new IllegalArgumentException("bad deals")
+            }
             case _ => throw new IllegalArgumentException("unknown procedure")
           }
-        case _ => throw new IllegalArgumentException("wrong lisp expression")
       }
     case _ => throw new IllegalArgumentException("wrong lisp expression")
   }
